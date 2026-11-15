@@ -1,153 +1,120 @@
+from hashlib import sha256
+from io import BytesIO
+from pathlib import PurePosixPath
+from zipfile import ZIP_STORED, ZipFile
+
 import streamlit as st
 from PIL import Image
-import io
-import zipfile
 
-st.set_page_config(
-    page_title="WebP to PNG Converter",
-    page_icon="🖼️",
-    layout="centered"
-)
+from tool_ui import support_footer, tool_header
 
-st.title("🖼️ WebP to PNG Converter")
-st.markdown("Convert your WebP images to PNG format - free and private!")
+MAX_FILES = 20
+MAX_PIXELS = 12_000_000
+MAX_BATCH_OUTPUT_BYTES = 80 * 1024 * 1024
 
-st.info("ℹ️ Your images are processed in memory and never stored on our servers.")
 
-# Initialize session state for converted images
-if 'converted_images' not in st.session_state:
-    st.session_state.converted_images = []
+def png_name(original, used_names):
+    stem = PurePosixPath(original.replace("\\", "/")).stem or "image"
+    name = f"{stem}.png"
+    suffix = 2
+    while name.casefold() in used_names:
+        name = f"{stem} ({suffix}).png"
+        suffix += 1
+    used_names.add(name.casefold())
+    return name
 
-# File uploader
-uploaded_files = st.file_uploader(
-    "Choose WebP image(s)",
-    type=['webp'],
-    accept_multiple_files=True,
-    help="You can select multiple WebP files at once"
-)
 
-if uploaded_files:
-    st.success(f"✅ {len(uploaded_files)} file(s) uploaded successfully!")
-    
-    # Add a convert button
-    if st.button("Convert to PNG", type="primary"):
-        st.session_state.converted_images = []  # Clear previous conversions
-        
-        with st.spinner("Converting images..."):
-            for uploaded_file in uploaded_files:
-                try:
-                    # Open the WebP image
-                    image = Image.open(uploaded_file)
-                    
-                    # Convert to PNG in memory
-                    png_buffer = io.BytesIO()
-                    
-                    # Handle transparency if present
-                    if image.mode in ('RGBA', 'LA', 'P'):
-                        image.save(png_buffer, format='PNG')
-                    else:
-                        # Convert to RGB if no transparency
-                        rgb_image = image.convert('RGB')
-                        rgb_image.save(png_buffer, format='PNG')
-                    
-                    png_buffer.seek(0)
-                    
-                    # Generate output filename
-                    output_filename = uploaded_file.name.rsplit('.', 1)[0] + '.png'
-                    
-                    # Store converted image in session state
-                    st.session_state.converted_images.append({
-                        'filename': output_filename,
-                        'data': png_buffer.getvalue()
-                    })
-                    
-                except Exception as e:
-                    st.error(f"❌ Error converting {uploaded_file.name}: {str(e)}")
-    
-    # Display converted images with download buttons
-    if st.session_state.converted_images:
-        st.markdown("---")
-        st.subheader("Converted Images")
-        
-        # Batch download button (if more than one file)
-        if len(st.session_state.converted_images) > 1:
-            # Create zip file in memory
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                for img in st.session_state.converted_images:
-                    zip_file.writestr(img['filename'], img['data'])
-            
-            zip_buffer.seek(0)
-            
-            st.download_button(
-                label=f"📦 Download All ({len(st.session_state.converted_images)} files as ZIP)",
-                data=zip_buffer,
-                file_name="converted_images.zip",
-                mime="application/zip",
-                type="primary"
-            )
-            st.markdown("---")
-        
-        # Individual download buttons
-        for idx, img in enumerate(st.session_state.converted_images):
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.write(f"📄 {img['filename']}")
-            with col2:
-                st.download_button(
-                    label="Download",
-                    data=img['data'],
-                    file_name=img['filename'],
-                    mime="image/png",
-                    key=f"download_{idx}"
-                )
-    
-    # Show preview section
-    if uploaded_files and len(uploaded_files) <= 5:  # Only show previews for small batches
-        st.markdown("---")
-        st.subheader("Preview")
-        for uploaded_file in uploaded_files:
-            try:
-                image = Image.open(uploaded_file)
-                st.image(image, caption=uploaded_file.name, use_container_width=True)
-            except:
-                pass
+def convert_image(upload):
+    with Image.open(BytesIO(upload.getvalue()), formats=["WEBP"]) as image:
+        width, height = image.size
+        if width * height > MAX_PIXELS:
+            raise ValueError("Image exceeds 12 megapixels.")
+        animated = getattr(image, "is_animated", False)
+        with image.convert("RGBA" if "A" in image.getbands() else "RGB") as frame:
+            output = BytesIO()
+            frame.save(output, format="PNG")
+        return output.getvalue(), (width, height), animated
 
-else:
-    st.markdown("""
-    ### How to use:
-    1. Click the upload button above
-    2. Select one or more WebP images
-    3. Click "Convert to PNG"
-    4. Download your converted files
-    
-    ### Features:
-    - ✨ Convert multiple files at once
-    - 🔒 Complete privacy - no server storage
-    - 🎨 Preserves transparency
-    - 💯 100% free to use
-    """)
 
-# Footer
-# --- FOOTER & DONATION ---
-def show_footer():
-    st.markdown("---")
-    st.markdown(
-        """
-        <div style="text-align: center; padding-top: 20px;">
-            <a href="https://buymeacoffee.com/isamir" target="_blank">
-                <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 50px !important;width: 180px !important;" >
-            </a>
-            <p style="margin-top: 15px; color: #aaa; font-size: 0.9em;">
-                This tool is 100% free. If it saved you time, a coffee is always appreciated! ☕
-            </p>
-            <p style="color: #999; font-size: 0.8em;">
-                Made by Ibrahim Samir | <a href="https://takea5.com" target="_blank" style="color: #999; text-decoration: none;">Takea5.com</a>
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True
+def convert_batch(uploads):
+    converted, errors = [], []
+    used_names = set()
+    bytes_used = 0
+    for upload in uploads:
+        try:
+            data, dimensions, animated = convert_image(upload)
+        except ValueError as error:
+            errors.append(f"{upload.name} · {error}")
+            continue
+        except (OSError, Image.DecompressionBombError):
+            errors.append(f"{upload.name} · Could not read this WebP image.")
+            continue
+        if bytes_used + len(data) > MAX_BATCH_OUTPUT_BYTES:
+            errors.append(f"{upload.name} · Output exceeds the batch limit. Try a smaller batch.")
+            continue
+        bytes_used += len(data)
+        converted.append((png_name(upload.name, used_names), data, dimensions, animated))
+    return converted, errors
+
+
+def build_zip(converted):
+    output = BytesIO()
+    with ZipFile(output, "w", compression=ZIP_STORED) as archive:
+        for name, data, _, _ in converted:
+            archive.writestr(name, data)
+    return output.getvalue()
+
+
+st.set_page_config(page_title="WebP to PNG Converter", page_icon="🖼️")
+tool_header("WebP to PNG", "Convert a batch of WebP images to PNG and keep transparent backgrounds.")
+
+with st.container(border=True):
+    uploads = st.file_uploader("WebP images", type=["webp"], accept_multiple_files=True)
+    st.caption("Up to 20 images, 15 MB and 12 megapixels each. Animated WebP exports its first frame.")
+    if len(uploads) > MAX_FILES:
+        st.error(f"Select up to {MAX_FILES} images per batch.")
+    convert = st.button(
+        "Convert to PNG", type="primary", disabled=not 0 < len(uploads) <= MAX_FILES
     )
+st.caption("The app processes uploads in server memory.")
 
-# Call it at the ends
-show_footer()
+signature = tuple(
+    (upload.name, getattr(upload, "file_id", None) or sha256(upload.getbuffer()).digest())
+    for upload in uploads
+) if len(uploads) <= MAX_FILES else None
+if st.session_state.get("conversion_batch") != signature:
+    st.session_state.conversion_batch = signature
+    st.session_state.pop("conversion_result", None)
+    st.session_state.pop("conversion_zip", None)
+
+if convert:
+    with st.spinner("Converting images…"):
+        result = convert_batch(uploads)
+        st.session_state.conversion_result = result
+        st.session_state.conversion_zip = build_zip(result[0]) if len(result[0]) > 1 else None
+
+if st.session_state.get("conversion_result"):
+    converted, errors = st.session_state.conversion_result
+    for error in errors:
+        st.warning(error)
+    if converted:
+        st.subheader(f"Downloads · {len(converted)} ready", anchor=False)
+        if st.session_state.conversion_zip:
+            st.download_button(
+                "Download all as ZIP", st.session_state.conversion_zip,
+                "converted-images.zip", "application/zip", type="primary", on_click="ignore",
+            )
+        for index, (name, data, (width, height), animated) in enumerate(converted):
+            with st.container(border=True):
+                st.text(name)
+                detail = f"{width} × {height} px · {len(data) / 1024:,.0f} KB"
+                st.caption(f"{detail} · First frame" if animated else detail)
+                st.download_button(
+                    "Download PNG", data, name, "image/png",
+                    key=f"png_{index}", on_click="ignore",
+                )
+                if len(converted) <= 5:
+                    with st.expander("Image preview"):
+                        st.image(data, width=320)
+
+support_footer()

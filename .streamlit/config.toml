@@ -1,0 +1,20 @@
+[theme]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap"
+headingFont = "DM Sans:https://fonts.googleapis.com/css2?family=DM+Sans:wght@400..700&display=swap"
+baseRadius = "medium"
+showWidgetBorder = true
+
+[theme.light]
+primaryColor = "#145BBD"
+backgroundColor = "#F4F8FF"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#152742"
+
+[theme.dark]
+primaryColor = "#9CC6FF"
+backgroundColor = "#111B2C"
+secondaryBackgroundColor = "#19283F"
+textColor = "#ECF3FF"
+
+[server]
+maxUploadSize = 15
