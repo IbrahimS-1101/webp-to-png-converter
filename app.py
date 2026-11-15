@@ -66,7 +66,11 @@ def build_zip(converted):
 
 
 st.set_page_config(page_title="WebP to PNG Converter", page_icon="🖼️")
-tool_header("WebP to PNG", "Convert a batch of WebP images to PNG and keep transparent backgrounds.")
+tool_header(
+    "WebP to PNG",
+    "Convert a batch of WebP images to PNG and keep transparent backgrounds.",
+    "حوّل عدة صور من WebP إلى PNG مع الحفاظ على الشفافية. نزّل الصور منفردة أو في ملف ZIP واحد.",
+)
 
 with st.container(border=True):
     uploads = st.file_uploader("WebP images", type=["webp"], accept_multiple_files=True)
